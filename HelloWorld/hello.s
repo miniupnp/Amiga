@@ -19,8 +19,8 @@ start
 	moveq	#0,d0
 	movea.l	4,a6	; exec.library
 	jsr     _LVOOpenLibrary(a6)
-	move.l	d0,a6
-	;tst.l	d0
+	movea.l	d0,a6
+	tst.l	d0		; movea doesn't affect flags
 	beq.s	error
 	jsr     _LVOOutput(a6)
 	move.l	d0,d1
@@ -33,7 +33,8 @@ start
 	lea intuiname(pc),a1
 	moveq	#0,d0
 	jsr _LVOOpenLibrary(a6)
-	move.l	d0,a6
+	movea.l	d0,a6
+	tst.l	d0		; movea doesn't affect flags
 	beq.s	error
 	suba.l	a0,a0	; a0 = 0
 	jsr	_LVODisplayBeep(a6)
