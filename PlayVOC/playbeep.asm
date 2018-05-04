@@ -1,4 +1,5 @@
-; Amiga hello world
+; vim: set tabstop=8 shiftwidth=8 noexpandab
+; Amiga plays a beep with audio.device
 ; for vasmm68k_mot
 
 ; calls scratches D0/D1 A0/A1 and preserves other registers
@@ -7,7 +8,7 @@
 _LVOAllocMem	EQU -198
 _LVOAllocAbs	EQU	-204
 _LVOFreeMem		EQU -210
-_LVOWait EQU -318
+_LVOWait 	EQU -318
 _LVOAddPort	EQU	-354
 _LVORemPort EQU -360
 _LVOPutMsg	EQU	-366
@@ -18,6 +19,7 @@ _LVOOpenLibrary	equ -408
 _LVOCloseLibrary	equ -414
 _LVOOpenDevice	EQU	-444
 _LVOCloseDevice EQU -450
+; only available with V36
 _LVOCreateMsgPort	EQU	-666
 _LVODeleteMsgPort EQU -672
 
@@ -117,6 +119,8 @@ varsize	equ 24
 clockntsc	equ 3579545
 clockpal	equ 3546895
 
+soundfreq	equ 440
+
 	code
 start
 	move.l	a0,-(sp)	; push command line pointer
@@ -128,7 +132,7 @@ start
 	movea.l	4,a6	; exec.library
 	jsr     _LVOOpenLibrary(a6)
 	move.l	d0,dosbase(sp)
-	beq	error
+	beq		error
 
 	movea.l	d0,a6
 	jsr     _LVOOutput(a6)
@@ -238,9 +242,9 @@ start
 	move.b	#ADIOF_PERVOL,IO_FLAGS(a1)
 	move.l	wave(sp),ioa_Data(a1)
 	move.l	#2,ioa_Length(a1)
-	move.w	#clockpal/(2*440),ioa_Period(a1)
+	move.w	#clockpal/(2*soundfreq),ioa_Period(a1)
 	move.w	#64,ioa_Volume(a1)
-	move.w	#440*3,ioa_Cycles(a1)
+	move.w	#soundfreq*3,ioa_Cycles(a1)
 
 	; BeginIO(ioRequest),deviceNode -- start up an I/O process
 	;          A1        A6
