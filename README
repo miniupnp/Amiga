@@ -1,0 +1,7 @@
+Various programs for Amiga
+(c) Thomas Bernard
+
+* HelloWorld     commandline hello world in 68k ASM
+
+* PlayVOC        Play Creative Voice Files (.VOC) on Amiga
+                 Uses audio.device  68k ASM
