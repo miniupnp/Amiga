@@ -15,6 +15,8 @@ _LVODisplayBeep EQU -96
 
 	code
 start
+	move.l	a0,-(sp)	; push command line pointer
+	move.l	d0,-(sp)	; push command line length
 	lea	dosname(pc),a1
 	moveq	#0,d0
 	movea.l	4,a6	; exec.library
@@ -24,6 +26,11 @@ start
 	beq.s	error
 	jsr     _LVOOutput(a6)
 	move.l	d0,d1
+	move.l	4(sp),d2
+	move.l	(sp),d3
+	move.l	d0,(sp)	; backup "Output"
+	jsr	_LVOWrite(a6)
+	move.l	(sp),d1
 	move.l	#message,d2
 	move.l	#messageend-message,d3
 	jsr	_LVOWrite(a6)
@@ -44,13 +51,16 @@ start
 	jsr	_LVOCloseLibrary(a6)
 
 	moveq	#0,d0
+	addq	#8,sp
 	rts
 error
 	moveq	#-1,d0
+	addq	#8,sp
 	rts
 
-	;data
+	; PC relative data :
 dosname	dc.b 'dos.library',0
 intuiname	dc.b 'intuition.library',0
+	;data
 message	dc.b 'Hello Amiga !',10
 messageend
