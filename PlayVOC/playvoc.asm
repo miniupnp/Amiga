@@ -1,4 +1,5 @@
-; Amiga hello world
+; vim: set tabstop=8 shiftwidth=8 noexpandab
+; Amiga plays a Creative Voice (.VOC) file  with audio.device
 ; for vasmm68k_mot
 
 ; calls scratches D0/D1 A0/A1 and preserves other registers
@@ -7,7 +8,7 @@
 _LVOAllocMem	EQU -198
 _LVOAllocAbs	EQU	-204
 _LVOFreeMem		EQU -210
-_LVOWait EQU -318
+_LVOWait 	EQU -318
 _LVOAddPort	EQU	-354
 _LVORemPort EQU -360
 _LVOPutMsg	EQU	-366
@@ -18,6 +19,7 @@ _LVOOpenLibrary	equ -408
 _LVOCloseLibrary	equ -414
 _LVOOpenDevice	EQU	-444
 _LVOCloseDevice EQU -450
+; only available with V36
 _LVOCreateMsgPort	EQU	-666
 _LVODeleteMsgPort EQU -672
 
@@ -35,8 +37,21 @@ MEMF_TOTAL	equ   524288	; AvailMem: return total size of memory
 MEMF_NO_EXPUNGE	equ $80000000	; AllocMem: Do not cause expunge on failure
 
 ; dos.library
+_LVOOpen	EQU	-30
+_LVOClose	EQU	-36
+_LVORead	EQU -42
 _LVOWrite	EQU -48
+_LVOInput	EQU -54
 _LVOOutput	EQU -60
+_LVOSeek	EQU	-66
+_LVODeleteFile	EQU	-72
+_LVORename	EQU	-78
+_LVOLock	EQU	-84
+_LVOUnLock	EQU	-90
+_LVODupLock	EQU	-96
+_LVOExamine	EQU	-102
+_LVOExNext	EQU	-108
+_LVOInfo	EQU -114
 
 ; intuition.library
 _LVODisplayBeep EQU -96
@@ -112,7 +127,14 @@ msg		equ 8
 wave	equ 12
 dosbase	equ	16
 stdout	equ	20
-varsize	equ 24
+buffer	equ	24
+fd		equ	28
+wavelen	equ	32
+freq	equ	36	; UWORD
+tmp		equ	38	; UWORD
+varsize	equ 40
+
+buffersize	equ	512
 
 clockntsc	equ 3579545
 clockpal	equ 3546895
@@ -122,17 +144,145 @@ start
 	move.l	a0,-(sp)	; push command line pointer
 	move.l	d0,-(sp)	; push command line length
 	lea	-varsize(sp),sp
+	clr.l	AIOptr(sp)
+	clr.l	msgport(sp)
+	clr.l	buffer(sp)
+	clr.l	wave(sp)
+	clr.l	fd(sp)
 
 	lea	dosname(pc),a1
 	moveq	#0,d0
 	movea.l	4,a6	; exec.library
 	jsr     _LVOOpenLibrary(a6)
 	move.l	d0,dosbase(sp)
-	beq	error
+	beq		error
 
 	movea.l	d0,a6
 	jsr     _LVOOutput(a6)
 	move.l	d0,stdout(sp)
+
+	move.l	#msg1,d2
+	move.l	#msg2-msg1,d3
+	bsr	puts
+
+	move.l	#buffersize,d0
+	move.l	#MEMF_CLEAR,d1
+	movea.l	4,a6	; exec.library
+	jsr		_LVOAllocMem(a6)
+	move.l	d0,buffer(sp)
+	beq		error
+
+	bsr	printhex
+
+	move.l	#msg7,d2
+	move.l	#msg8-msg7,d3
+	bsr puts
+
+	; Copy filename from comand line argument
+	move.l	varsize+4(sp),a0
+	move.l	buffer(sp),a1
+	move.l	varsize(sp),d1
+.argcpyloop
+	move.b	(a0)+,d0
+	cmpi.b	#32,d0
+	bcs	.argcopystop
+	move.b	d0,(a1)+
+	dbra	d1,.argcpyloop
+.argcopystop
+	move.l	buffer(sp),d2
+	move.l	a1,d3
+	sub.l	d2,d3
+	bsr	puts
+
+	move.l	buffer(sp),d1
+	move.l	#1005,d2	; MODE_OLDFILE
+	movea.l	dosbase(sp),a6
+	jsr	_LVOOpen(a6)
+	move.l	d0,fd(sp)
+	beq		error
+
+	bsr	printhex
+
+	move.l	fd(sp),d1
+	move.l	buffer(sp),d2
+	move.l	#buffersize,d3
+	jsr	_LVORead(a6)
+
+	; parse Creative Voice File
+	move.l	buffer(sp),a0
+	; skip header
+	moveq	#0,d0
+	move.b	21(a0),d0
+	asl.w	#8,d0
+	move.b	20(a0),d0
+	add.l	d0,a0
+	; block type
+	move.b	(a0)+,d0	; Block type : 1 => sound data
+	; block size
+	moveq	#0,d0
+	move.b	(a0)+,d0
+	ror.l	#8,d0
+	move.b	(a0)+,d0
+	ror.l	#8,d0
+	move.b	(a0)+,d0
+	swap	d0 ; d0 = block size
+	moveq.l	#0,d1
+	move.b	(a0)+,d1	; frequency divisor
+	move.b	(a0)+,d2	; VOC codec (0 = 8bit unsigned PCM)
+	subq.l	#2,d0
+	move.l	d0,wavelen(sp)
+	; compute frequency
+	move.w	#256,d0
+	sub.w	d1,d0
+	move.l	#1000000,d1
+	divu.w	d0,d1
+	move.w	d1,freq(sp)
+	move.l	a0,a5	; save
+
+	move.l	buffer(sp),d2
+	move.l	#20,d3
+	bsr puts
+
+	move.l	#msg1,d2
+	move.l	#msg2-msg1,d3
+	bsr	puts
+
+	move.l	wavelen(sp),d0
+	move.l	#MEMF_CHIP+MEMF_PUBLIC,d1
+	movea.l	4,a6	; exec.library
+	jsr		_LVOAllocMem(a6)
+	move.l	d0,wave(sp)
+	beq		error
+
+	bsr	printhex
+
+	move.l	wave(sp),a4
+	move.l	buffer(sp),a0
+	adda	#buffersize,a0
+.samplecopyloop1
+	move.b	(a5)+,d0
+	subi.b	#128,d0		; Unsigned to signed Sample conversion
+	move.b	d0,(a4)+
+	cmp.l	a5,a0
+	bne	.samplecopyloop1
+
+.readloop
+	move.l	fd(sp),d1
+	move.l	buffer(sp),d2
+	move.l	#buffersize,d3
+	jsr	_LVORead(a6)
+	cmp.l	#0,d0
+	ble	.readfinished
+	subq	#1,d0
+	move.l	buffer(sp),a5
+.samplecopyloop2
+	move.b	(a5)+,d1
+	subi.b	#128,d1		; Unsigned to signed Sample conversion
+	move.b	d1,(a4)+
+	dbra	d0,.samplecopyloop2
+	bra	.readloop
+
+.readfinished
 
 	move.l	#msg1,d2
 	move.l	#msg2-msg1,d3
@@ -144,24 +294,6 @@ start
 	jsr		_LVOAllocMem(a6)
 	move.l	d0,AIOptr(sp)
 	beq		error
-
-	bsr	printhex
-
-	move.l	#msg1,d2
-	move.l	#msg2-msg1,d3
-	bsr	puts
-
-	move.l	#2,d0
-	move.l	#MEMF_CHIP+MEMF_PUBLIC,d1
-	movea.l	4,a6	; exec.library
-	jsr		_LVOAllocMem(a6)
-	move.l	d0,wave(sp)
-	beq		error
-
-	; generate "waveform"
-	move.l	d0,a1
-	move.b	#127,(a1)
-	move.b	#-127,1(a1)
 
 	bsr	printhex
 
@@ -237,10 +369,12 @@ start
 	move.w	#CMD_WRITE,IO_COMMAND(a1)
 	move.b	#ADIOF_PERVOL,IO_FLAGS(a1)
 	move.l	wave(sp),ioa_Data(a1)
-	move.l	#2,ioa_Length(a1)
-	move.w	#clockpal/(2*440),ioa_Period(a1)
+	move.l	wavelen(sp),ioa_Length(a1)
+	move.l	#clockpal,d0
+	divu.w	freq(sp),d0
+	move.w	d0,ioa_Period(a1)
 	move.w	#64,ioa_Volume(a1)
-	move.w	#440*3,ioa_Cycles(a1)
+	move.w	#1,ioa_Cycles(a1)
 
 	; BeginIO(ioRequest),deviceNode -- start up an I/O process
 	;          A1        A6
@@ -260,7 +394,21 @@ start
 
 
 success
+	tst.l	fd(sp)
+	beq	.nofd
+	movea.l dosbase(sp),a6
+	move.l	fd(sp),d1
+	jsr	_LVOClose(a6)
+.nofd
+
 	movea.l	4,a6	; exec.library
+
+	tst.l	buffer(sp)
+	beq	.nobuffer
+	move.l	buffer(sp),a1
+	move.l	#buffersize,d0
+	jsr	_LVOFreeMem(a6)
+.nobuffer
 
 	tst.l	wave(sp)
 	beq	.nowave
@@ -276,12 +424,12 @@ success
 	jsr _LVODeleteMsgPort(a6)
 .nomsgport
 
+	tst.l	AIOptr(sp)
+	beq	.noaioptr
 	; CloseDevice
 	move.l	AIOptr(sp),a1
 	jsr	_LVOCloseDevice(a6)
 
-	tst.l	AIOptr(sp)
-	beq	.noaioptr
 	move.l	AIOptr(sp),a1
 	move.l	#ioa_SIZEOF,d0
 	jsr _LVOFreeMem(a6)
@@ -337,7 +485,8 @@ msg3	dc.b 10,' SigBit : '
 msg4	dc.b 10,' SigTask : '
 msg5	dc.b 10,'Open Audio device. AllocKey='
 msg6	dc.b 10,'Start Playing',10
-msg7
+msg7	dc.b 10,'Open File : '
+msg8
 errmsg	dc.b 10,'Error',10
 errmsgend
 whichannel	dc.b	1,2,4,8
